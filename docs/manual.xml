@@ -1,0 +1,1706 @@
+<?xml version="1.0"?>
+<book xmlns="http://docbook.org/ns/docbook" version="5.0">
+	<chapter xml:id="vh-start">
+		<title>About <productname>VH</productname></title>
+		<abstract>
+			<para>
+				<productname>VH</productname> is a software development toolkit offered by Indigo Hill for the C language.  <productname>VH</productname> allows developers to access back end database products using the native SQL language.  The SDK differs from traditional ORM libraries by following a record model rather than an object model.  <productname>VH</productname> allows for developers to fetch records using a traditional SELECT statement.  The results of queries to back ends may manipulate the records returned by the statement.  Changes may be published to the originating backend or another backend instance from a completely different vendor (i.e. origin PostgreSQL, target SQLite).</para>
+			<para>The SDK has it's own data type system which allows for automatic type deducation when working with operators.  This allows for users to compare and assign values to record fields directly from the C language.  The product automatically deduces underlying data types, even for constants allocated on the stack.</para>
+			<para>Query results are scoped to the transaction block, allowing for unneeded records to be de-allocated from memory at the user's disposal.  Transactions may cross multiple database instances from multiple vendors provided each vendor supports Two Phase Transactions.  Records may be shared across processes and threads when using <productname>VH</productname>'s operators to manipulate data.</para>
+			<para>
+				<productname>VH</productname> requires no schemas to be compiled into the C source code.  There is no need for code generators or preprocessors.  You may compile your program using any C89 compliant compiler and link the VH SDK.  Schemas are loaded at runtime, at your discretion.  You may choose to load a schema from a configuration file at runtime or retrieve one or more schemas directly from one or more connected databases.</para>
+			<para>The software was designed to operate on embedded devices to large server installations.</para>
+		</abstract>
+		<sect1 xml:id="vh-about">
+			<title>Features</title>
+			<abstract>
+				<variablelist>
+					<varlistentry>
+						<term>In Memory Analytics</term>
+						<listitem>
+							<para>In memory analytics engine.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>Record Based</term>
+						<listitem>
+							<para>Record based rather than object based allows you to define relationships on the fly.</para>
+							<para>Nesting routines allow you to nest any set of interrelated records and process the relation as a whole.</para>
+						</listitem>
+					</varlistentry>
+					
+					<varlistentry>
+						<term>Shared Records</term>
+						<listitem>
+							<para>Data records may be shared across process and modified.  An aggressive copy-on-write minimizes locking when multiple processes are accessing the same record.</para>
+							<para>Ability to set wait events from other processes on specific data record values, allows for coordination between worker processes.</para>
+						</listitem>
+					</varlistentry>
+					
+					<varlistentry>
+						<term>Multi Process Transactions</term>
+						<listitem>
+							<para>Transactions may share data across processes, run in parallel and perform a near autonomous commit using two phase commit functionality if the underlying database supports it.</para>
+						</listitem>
+					</varlistentry>
+				</variablelist>
+			</abstract>
+		</sect1>
+		<sect1>
+			<title>Supported Architectures</title>
+			<abstract>
+				<variablelist>
+					<varlistentry>
+						<term>ATOM</term>
+						<listitem>
+							<para>OpenWRT</para>
+						</listitem>
+					</varlistentry>
+					
+					<varlistentry>
+						<term>MIPS</term>
+						<listitem>
+							<para>OpenWRT</para>
+						</listitem>
+					</varlistentry>
+					
+					<varlistentry>
+						<term>x86</term>
+						<listitem>
+							<para>Linux, Windows, BSD</para>
+						</listitem>
+					</varlistentry>
+					
+					<varlistentry>
+						<term>x86_64 / AMD64</term>
+						<listitem>
+							<para>Linux, Windows, BSD</para>
+						</listitem>
+					</varlistentry>
+				</variablelist>
+			</abstract>
+		</sect1>
+	</chapter>
+	<chapter xml:id="vh-startup">
+		<title>Startup and Shutdown</title>
+		<abstract>
+			<para>
+				<productname>VH</productname> has a variety of system catalogs that are established at startup.  These catalogs help the system manage resources: memory, 
+				backends, database connections, transactions, schemas, types.  Catalogs allow for users to add their own implemenations at run time and make them available 
+				to <productname>VH</productname>.
+			</para>
+		</abstract>
+		
+		<para>
+			It's highly recommended that all backends and data types are defined prior to launching a thread or process.  VH uses raw pointers to access data type
+			information and their I/O functions.  When data types aren't mapped at the time of a call to <function>vh_fork</function>, corruption may occur.
+		</para>
+		<para>
+			To protect the catalogs and provide thread safety, it's recommended the <productname>VH</productname> specific functions are called to launch new threads and
+			fork processes.  CatalogContext is referenced internally by the SDK under the assumption the guarantees provided by <function>vh_fork</function> and
+			<function>vh_thread</function>.
+		</para>
+		<para>
+			Starts <productname>VH</productname>.  Returns a pointer to a CatalogContext if succesful and null if <productname>VH</productname>
+			cannot be started.
+			<funcsynopsis>
+				<funcsynopsisinfo>
+					#include &lt;vh.h&gt;
+				</funcsynopsisinfo>
+			</funcsynopsis>
+			<funcprototype>
+				<funcdef>
+					<type>struct CatalogContext*</type>
+					<function>vh_start</function>
+				</funcdef>
+			</funcprototype>
+		</para>
+		<para>
+			Forks the current process to a new process and calls the function passed in.  Establishes the necessary shared memory mapping required for communication
+			between processes in the core catalog.  The <parameter>execute</parameter> function will be provided with a process local pointer to a new CatalogContext.
+			The CatalogContext instance specific to the forked process can also be accessed via <function>vh_ctx</function> from within that process.  A CatalogWorker
+			pointer is returned to the caller, to allow access to the forked process.
+			
+			<funcsynopsis>
+				<funcsynopsisinfo>
+					#include &lt;vh.h&gt;
+				</funcsynopsisinfo>
+			</funcsynopsis>
+			<funcprototype>
+				<funcdef>
+					<type>CatalogWorker</type>
+					<function>vh_fork</function>
+				</funcdef>
+				<paramdef>
+					<type>int32_t (*)(struct CatalogContext*, void *data)</type>
+					<parameter>execute</parameter>
+				</paramdef>
+				<paramdef>
+					<type>void*</type>
+					<parameter>data</parameter>
+				</paramdef>
+			</funcprototype>
+		</para>
+		
+		<sect1 xml:id="vh-backend">
+			<title>Backends</title>
+			<abstract>
+				<para>
+					Backends provide an interface for the <productname>VH</productname> system to Create, Update, Delete and Read data from a variety of locations.  A Backend
+					may be a traditional SQL database, HTTP REST API, or any other method of storing structured, row-like data.
+				</para>
+			</abstract>
+			
+			<para>
+				The following SQL database products are implemented by the <productname>VH</productname> library:
+				<variablelist>
+					<varlistentry>
+						<term>GridDB</term>
+						<listitem>
+							<para></para>
+						</listitem>
+					</varlistentry>
+					
+					<varlistentry>
+						<term>PostgreSQL</term>
+						<listitem>
+							<para>http://postgresql.org</para>
+						</listitem>
+					</varlistentry>
+					
+					<varlistentry>
+						<term>SQLite</term>
+						<listitem>
+							<para></para>
+						</listitem>
+					</varlistentry>
+					
+					<varlistentry>
+						<term>MySQL</term>
+						<listitem>
+							<para></para>
+						</listitem>
+					</varlistentry>
+				</variablelist>
+			</para>
+			
+			<sect2 xml:id="vh-backend-credentials">
+				<title>Credentials</title>
+				<abstract>
+					<para>
+						<productname>VH</productname> provides a variety of ways to manage access credentials for specific backend instances.  Credentials may be
+						stored in plain text format or encrypted.  The <structname>BackEndCredentialVal</structname>structure serves as a transport structure 
+						for the Backend interface to negotiate connections with the desired host.  A standard set of properties is used across all Backends.  Callers 
+						wishing to establish a connection to a given backend, should populate the appropriate fields in a BackEndCredentialVal structure.
+					</para>
+					<para>
+						There are several helper functions built in to the SDK to facilitate reading data into a <structname>BackEndCredentialVal</structname>
+						structure from command line arguments and JSON.
+					</para>
+					<para>
+						The <structname>BackEndCredentialVal</structname> structure should be initalized to zero (0).  An initialization function is not
+						provided.
+					</para>
+					
+					<synopsis>
+						#include &lt;vh/catalog/Backend.h&gt;
+					</synopsis>
+
+					<programlisting>
+						bool nulls[8];
+						char username[256];
+						char password[256];
+						
+						char client_ssl_uri[256];
+						char client_ssl_key[2046];
+						
+						BackendSocket socket;
+						char hostname[256];
+						char hostport[256];
+						char uri[256];
+					</programlisting>
+					
+					<para>
+						<structname>BackEndCredentialVal</structname> structure may be passed directly to the <function>vh_be_connect</function> function.  
+						However, it's expected the structure contain unencrypted data.  To minimize the time sensative information is stored in memory, 
+						the SDK has an interface to store and retrieve the credentials.  <structname>BackEndCredential</structname> structures are created 
+						based on the type of storage desired.  For example, if credentials are plain text, these will be stored in memory in a plain text format
+						until the library is shutdown.  Encrypted storage allows for credentials to be passed in an encrypted state and only decrypted
+						for a brief period to negotiate a new connection.  The <structname>BackEndCredential</structname> interface automates transfering
+						credentials to the BackEnd's connect functions.
+					</para>
+					<para>
+						Creates a <structname>BackEndCredential</structname> interface with the appropriate store and retrieval methods.  There are two
+						storage modes available: BECSM_PlainText and BECSM_SHA512.
+						
+						<funcsynopsis>
+							<funcsynopsisinfo>
+								#include &lt;vh/catalog/BackEnd.h&gt;
+							</funcsynopsisinfo>
+						</funcsynopsis>
+						<funcprototype>
+							<funcdef>
+								<type>BackEndCredential</type>
+								<function>vh_be_cred_create</function>
+							</funcdef>
+							<paramdef>
+								<type>BackEndCredentialStorageMode</type>
+								<parameter>sm</parameter>
+							</paramdef>
+							<paramdef>
+								<parameter>...</parameter>
+							</paramdef>
+						</funcprototype>
+						
+					</para>
+				</abstract>
+				
+				<sect3 xml:id="vh-backend-credentials-encrypted">
+					<title>Enrcyptyed</title>
+					<abstract>
+						<para>
+							Encrypted credentials minimizes the amount of time sensative usernames and passwords remain in memory.  The data will only be
+							decrypted just prior to requesting a connection.  After the connection is negotiated, the raw, unencrypted credentials will be
+							overwritten and subsequented destroyed.
+						</para>
+						<para>
+							To use an encrypted <structname>BackEndCredential</structname> interface, call <function>vh_be_cred_create</function> with
+							BECSM_SHA512 as the parameter.  The second function should be the file path to the private key used to decrypt the encypted values.
+						</para>
+					</abstract>
+				</sect3>
+				
+				<sect3 xml:id="vh-backend-credentials-plaintext">
+					<title>Plain Text</title>
+					<abstract>
+						<para>
+							Unecrypted credentials will be stored for the duration of the <productname>VH</productname> SDK.
+						</para>
+						<para>
+							To use a plain text <structname>BackEndCredential</structname> interface, call <function>vh_be_cred_create</function> with
+							BECSM_PlainText as the parameter.
+						</para>
+					</abstract>
+				</sect3>
+				
+			</sect2>
+				
+			<sect2 xml:id="vh-backend-connections">
+				<title>Connections</title>
+				<abstract>
+					<para>
+						A <structname>BackEndConnection</structname> handle provides the bare minimum information to communicate with a BackEnd.  Connections
+						may be established, transaction management, and a simplified query exector to retrieve results.
+					</para>
+				</abstract>
+				
+				<sect3 xml:id="vh-backend-connections-establishing">
+					<title>Establishing a Connection</title>
+					<abstract>
+						<para>
+							Raw connections to a Backend may be established without the use of the ConnectionCatalog.  It is the responsibility of the caller
+							to manage transactions and perform the disconnection when completed.  No pooling of raw connections is done by the application.  Each
+							request to <function>vh_be_connect</function> will attempt to open a new connection with the host.  Raw connections have limited use, 
+							but facilities do exist to run queries and examine the results.
+						</para>
+						<para>
+							Attempts to open a connection to the underyling BackEnd using the credentials provided.  Returns null on failure (most implementations
+							log any connections as an error in the logs) or a <structname>BackEndConnection</structname>.  The BackEndConnection is an opaque pointer
+							used by various functionality across the SDK.  It typically wraps the native C client driver for underlying data store.  It is required
+							that valid pointers to a <structname>BackEnd</structname> interface and a <structname>BackEndCredential</structname> interface is
+							provided.
+							
+							<funcsynopsis>
+								<funcsynopsisinfo>
+									#include &lt;vh/catalog/BackEnd.h&gt;
+								</funcsynopsisinfo>
+							</funcsynopsis>
+							<funcprototype>
+								<funcdef>
+									<type>BackEndConnection</type>
+									<function>vh_be_connect</function>
+								</funcdef>
+								<paramdef>
+									<type>BackEnd</type>
+									<parameter>be</parameter>
+								</paramdef>
+								<paramdef>
+									<type>BackEndCredential</type>
+									<parameter>becred</parameter>
+								</paramdef>
+							</funcprototype>
+						</para>
+						
+						<sect4>
+							<title>Disconnecting</title>
+							<abstract>
+								<para>
+									Disconnections should be managed by the caller.  To disconnect a connected BackEnd, simply call <function>vh_be_disconnect</function>.
+									<structname>BackEndConnection</structname> is a required parameter.
+									<funcsynopsis>
+										<funcsynopsisinfo>
+											#include &lt;vh/catalog/BackEnd.h&gt;
+										</funcsynopsisinfo>
+									</funcsynopsis>
+									<funcprototype>
+										<funcdef>
+											<type>BackEndConnection</type>
+											<function>vh_be_disconnect</function>
+										</funcdef>
+										<paramdef>
+											<type>BackEndConnection</type>
+											<parameter>bec</parameter>
+										</paramdef>
+									</funcprototype>
+								</para>
+							</abstract>
+						</sect4>
+					</abstract>
+				</sect3>
+				
+				<sect3 xml:id="vh-backend-connections-query">
+					<title>Querying the Connection</title>
+					<abstract>
+						<para>
+						</para>
+					</abstract>
+				</sect3>
+				
+				<sect3 xml:id="vh-backend-connections-pooling">
+					<title>Pooling</title>
+				</sect3>
+			</sect2>
+
+			
+			<sect2 xml:id="vh-backend-catalog">
+				<title>Catalog</title>
+				<abstract>
+					<para>
+						The Backend Catalog is used to store specific Backend implementations by name and identifer.  Throughout the SDK, various functions require a
+						valid Backend pointer to be provided.  The catalog implementation makes it possible for the lookup of the pointer to a specific Backend by name
+						or identifier.
+					</para>
+					<para>
+						NOTE: the Backend Catalog should be fully populated prior to any threads or processes being launched.
+					</para>
+				</abstract>
+				<para>Creates a new, empty BackEndCatalog.<funcsynopsis>
+						<funcprototype>
+							<?dbhtml funcsynopsis-style='ansi'?>
+							<funcdef>
+								<type>BackEndCatalog</type>
+								<function>vh_cat_be_create</function>
+							</funcdef>
+							<paramdef>
+								<type>void</type>
+								<parameter/>
+							</paramdef>
+						</funcprototype>
+					</funcsynopsis>
+				</para>
+				<para>Destroys BackEndCatalog created by the user.  The system catalog for BackEnds cannot be destroyed by a user.<funcsynopsis>
+						<funcprototype>
+							<?dbhtml funcsynopsis-style='ansi'?>
+							<funcdef>
+								<type>void</type>
+								<function>vh_cat_be_destroy</function>
+							</funcdef>
+							<paramdef>
+								<type>BackEndCatalog</type>
+								<parameter> catalog</parameter>
+							</paramdef>
+						</funcprototype>
+					</funcsynopsis>
+				</para>
+				<para>Adds a BackEnd to a given BackEndCatalog.<funcsynopsis>
+						<funcprototype>
+							<?dbhtml funcsynopsis-style='ansi'?>
+							<funcdef>
+								<type>bool</type>
+								<function>vh_cat_be_add</function>
+							</funcdef>
+							<paramdef>
+								<type>BackEndCatalog</type>
+								<parameter> catalog</parameter>
+							</paramdef>
+							<paramdef>
+								<type>BackEnd</type>
+								<parameter> backend</parameter>
+							</paramdef>
+						</funcprototype>
+					</funcsynopsis>
+				</para>
+				<para>Searches a given BackEndCatalog for a BackEnd of a specific name.<funcsynopsis>
+						<funcprototype>
+							<?dbhtml funcsynopsis-style='ansi'?>
+							<funcdef>
+								<type>BackEnd</type>
+								<function>vh_cat_be_getbyname</function>
+							</funcdef>
+							<paramdef>
+								<type>BackEndCatalog</type>
+								<parameter> catalog</parameter>
+							</paramdef>
+							<paramdef>
+								<type>const char*</type>
+								<parameter> name</parameter>
+							</paramdef>
+						</funcprototype>
+					</funcsynopsis>
+				</para>
+				<para>Searches a given BackEndCatalog for a BackEnd of a specific identifier.<funcsynopsis>
+						<funcprototype>
+							<?dbhtml funcsynopsis-style='ansi'?>
+							<funcdef>
+								<type>BackEnd</type>
+								<function>vh_cat_be_getbyid</function>
+							</funcdef>
+							<paramdef>
+								<type>BackEndCatalog</type>
+								<parameter> catalog</parameter>
+							</paramdef>
+							<paramdef>
+								<type>int</type>
+								<parameter> id</parameter>
+							</paramdef>
+						</funcprototype>
+					</funcsynopsis>
+				</para>
+			</sect2>
+		</sect1>
+		<sect1 xml:id="vh-catalog-table">
+			<title>Table Catalog</title>
+			<abstract>
+				<para>The table catalog allows you to lookup tables <productname>VH</productname> is aware of by name.  This is helpful when working with the low level API.  Typically, <productname>VH</productname> handles all table lookups automatically, using the table catalog interface described below.</para>
+			</abstract>
+			<para>Creates a new empty table catalog.<funcsynopsis>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>
+							<type>TableCatalog</type>
+							<function>vh_cat_tbl_create</function>
+						</funcdef>
+						<paramdef>
+							<type>const char*</type>
+							<parameter> name</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+			<para>Destroys a TableCatalog, but not the underlying tables.<funcsynopsis>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>
+							<type>void</type>
+							<function>vh_cat_tbl_destroy</function>
+						</funcdef>
+						<paramdef>
+							<type>TableCatalog</type>
+							<parameter> catalog</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+			<para>Adds a TableDef to a given catalog.<funcsynopsis>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>
+							<type>void</type>
+							<function>vh_cat_tbl_add</function>
+						</funcdef>
+						<paramdef>
+							<type>TableCatalog</type>
+							<parameter> catalog</parameter>
+						</paramdef>
+						<paramdef>
+							<type>TableDef</type>
+							<parameter> tabledef</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+			<para>Creates an TableDef empty TableDef for a given name, to a given catalog.<funcsynopsis>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>
+							<type>void</type>
+							<function>vh_cat_tbl_createtbl</function>
+						</funcdef>
+						<paramdef>
+							<type>TableCatalog</type>
+							<parameter> catalog</parameter>
+						</paramdef>
+						<paramdef>
+							<type>const char*</type>
+							<parameter> table_name</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+			<para>Checks if a table named is present in a given catalog.<funcsynopsis>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>
+							<type>bool</type>
+							<function>vh_cat_tbl_exists</function>
+						</funcdef>
+						<paramdef>
+							<type>TableCatalog</type>
+							<parameter> catalog</parameter>
+						</paramdef>
+						<paramdef>
+							<type>const char*</type>
+							<parameter> table_name</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+			<para>Returns the TableDef if a given table name is present in the catalog.<funcsynopsis>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>
+							<type>bool</type>
+							<function>vh_cat_tbl_getbyname</function>
+						</funcdef>
+						<paramdef>
+							<type>TableCatalog</type>
+							<parameter> catalog</parameter>
+						</paramdef>
+						<paramdef>
+							<type>const char*</type>
+							<parameter> table_name</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+		</sect1>
+		<sect1 xml:id="vh-catalog-type">
+			<title>Type Catalog</title>
+			<abstract>
+				<para>The Type Catalog requires that all custom types be registered prior to commencing any operations with <productname>VH</productname>.  All types should be added to the catalog prior to threads being launched or processes being forked.</para>
+				<para>
+					<function>vh_start</function> provides the functionality to register custom types from your application and/or libraries dynamically linked to your application.</para>
+				<para>Types may not be removed from the catalog at runtime, however you can control the number of types that are registered during startup.</para>
+			</abstract>
+			<para>Adds a new Type to the catalog.<funcsynopsis>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>
+							<type>bool</type>
+							<function>vh_type_add</function>
+						</funcdef>
+						<paramdef>
+							<type>Type</type>
+							<parameter> type</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+			<para>Looks up a Type by name.  Type names must be unique.<funcsynopsis>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>
+							<type>bool</type>
+							<function>vh_type_ctype</function>
+						</funcdef>
+						<paramdef>
+							<type>const char*</type>
+							<parameter> type_name</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+		</sect1>
+		<sect1 xml:id="vh-catalog-keygen">
+			<title>Key Generator Catalog</title>
+			<abstract>
+				<para>
+					<productname>VH</productname> allows users to define their own custom Key Generators, which will automatically populate fields on new records with data.  When a schema is read from a JSON file or other source, any Key Generators attached to fields should be in the master Key Generator catalog.</para>
+			</abstract>
+		</sect1>
+		<sect1 xml:id="vh-catalog-connection">
+			<title>Backend Connection Catalog</title>
+			<abstract>
+				<para>Connections to BackEnds are automatically managed by <productname>VH</productname>.  However there are scenarios where you may need to acquire a connection directly and send commands to it.  Generally <productname>VH</productname> attaches the database product's low level connection structures to it's own connection structure.</para>
+			</abstract>
+			<para>Gets a BackEndConnection for a specific ShardAccess.<funcsynopsis>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>
+							<type>bool</type>
+							<function>vh_cat_conn_get</function>
+						</funcdef>
+						<paramdef>
+							<type>ConnectionCatalog</type>
+							<parameter> catalog</parameter>
+						</paramdef>
+						<paramdef>
+							<type>ShardAccess</type>
+							<parameter> shard_access</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+		</sect1>
+	</chapter>
+	<chapter xml:id="vh-context">
+		<title>Contexts</title>
+		<abstract>
+			<para>Every process and thread launched via <productname>VH</productname> acquires a context.  By default, all memory allocations will occur in the current transaction block's context.  When the transaction is destroyed, all memory allocated within that context is also returned to the operating system automatically.  This sweep design allows for specific allocations, but broad frees.  You may choose to use <productname>VH</productname> allocation routines in your application or your own.  You cannot force <productname>VH</productname> to use another routine internally.  The allocation routines have been extensively monitored and optimized to ensure scope is just right for each routine invoked by the user.</para>
+		</abstract>
+		<sect1>
+			<title>Memory Management</title>
+			<abstract>The basic routines mimic those offered by modern operating systems.  Behind the scenes, <productname>VH</productname> uses MemoryContexts to handle specific implementation details depending on the MemoryContext type.</abstract>
+			<para>Allocate a chunk of memory <parameter>size</parameter> bytes long in the current context.<funcsynopsis>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>
+							<type>void*</type>
+							<function>vhmalloc</function>
+						</funcdef>
+						<paramdef>
+							<type>size_t</type>
+							<parameter> size</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+			<para>Allocate a chunk of memory <parameter>size</parameter> bytes long a specific <parameter>context</parameter>.<funcsynopsis>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>
+							<type>void*</type>
+							<function>vhmalloc_ctx</function>
+						</funcdef>
+						<paramdef>
+							<type>MemoryContext</type>
+							<parameter> context</parameter>
+						</paramdef>
+						<paramdef>
+							<type>size_t</type>
+							<parameter> size</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+			<para>Returns a block of memory allocated by <function>vhmalloc</function> or <function>vhmalloc_ctx</function> to the allocator.  The allocator may not release the memory to the operating system.  Instead keeping the chunk in its own internal free lists for future allocations.<funcsynopsis>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>
+							<type>void</type>
+							<function>vhfree</function>
+						</funcdef>
+						<paramdef>
+							<type>void*</type>
+							<parameter> pointer</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+			<para>Changes the size of the memory block pointed to by <parameter>pointer</parameter> to <parameter>size</parameter> bytes.  The contents will be unchanged in the range from the start region up to the minimum of the old and new sizes.<funcsynopsis>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>
+							<type>void</type>
+							<function>vhrealloc</function>
+						</funcdef>
+						<paramdef>
+							<type>void*</type>
+							<parameter> pointer</parameter>
+						</paramdef>
+						<paramdef>
+							<type>size_t</type>
+							<parameter> size</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+		</sect1>
+		<sect1>
+			<title>Memory Contexts</title>
+			<abstract>
+				<para>The memory management functions always target a context.  A memory context is an opaque structure with corresponding function table that defines the actual allocation and deallocation routines.  This allows for VH to abstract the allocation details away from the caller.</para>
+				<para>VH gives the user the ability to create new MemoryContexts.  Creating a new context may be necessary when doing lots of small allocations that have a finite lifetime.  This allows the caller to perform a series of <function>vhmalloc</function> calls without having to individually <function>vhfree</function> each allocation.</para>
+				<para>MemoryContexts are nested.  Thus when the user creates a MemoryContext, it will typically be nested under the current transaction block's context.  When the transaction is destroyed, it's MemoryContext is destroyed.  MemoryContext's automatically return all allocated memory to the operating system upon destruction.  Also, any child MemoryContext's are also destroyed.</para>
+			</abstract>
+			<para>Creates a new generic, non-shared MemoryContext with a basic allocator complete with a free list.  <parameter>name</parameter> allows the user to describe a name for debugging purposes.  The context will acquire blocks of <parameter>chunk_size</parameter> from the operating system.  Requests for memory larger than <parameter>chunk_size</parameter> are handled directly with <function>malloc</function>.  <parameter>parent_context</parameter> is optional, a null <parameter>parent_context</parameter> will cause the new MemoryContext to become a child of the current MemoryContext.<funcsynopsis>
+					<funcprototype>
+						<funcdef>
+							<type>MemoryContext</type>
+							<function>vh_MemoryPoolCreate</function>
+						</funcdef>
+						<paramdef>
+							<type>const char*</type>
+							<parameter> name</parameter>
+						</paramdef>
+						<paramdef>
+							<type>size_t</type>
+							<parameter> chunk_size</parameter>
+						</paramdef>
+						<paramdef>
+							<type>MemoryContext</type>
+							<parameter> parent_context</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+			<para>Destroys the MemoryContext <parameter>mctx</parameter>, returning all memory allocated under to the operating system.<funcsynopsis>
+					<funcprototype>
+						<funcdef>
+							<type>void</type>
+							<function> vh_MemoryContextDestroy</function>
+						</funcdef>
+						<paramdef>
+							<type>MemoryContext</type>
+							<function> mctx</function>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+			<para>Returns the current MemoryContext within the current thread or processes CatalogContext.<funcsynopsis>
+					<funcprototype>
+						<funcdef>
+							<type>MemoryContext</type>
+							<function>vh_MemoryContextCurrent</function>
+						</funcdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+			<para/>
+		</sect1>
+		<sect1>
+			<title>Shared Memory</title>
+			<abstract>
+				<para>The MemoryContext infrastructure can also be used to allocated shared memory available across processes.  When <productname>VH</productname> spawns a process, all shared memory segments from the parent process will be automatically mapped into the child process.</para>
+				<para>A MemoryContext for a shared memory region returns relative pointers that are not directly accessible.  To resolve a relative pointer, you must have the MemoryContext handle available and use <function>vh_pointer</function> to get a memory address in the local process.  This methodology allows the underlying shared memory allocator routines to grow and shrink shared memory regions.</para>
+				<para>It's important your data structures are aware of the MemoryContext when Shared Memory is used.  Without the MemoryContext, you will be unable to resolve the relative pointer to the memory address.</para>
+			</abstract>
+			<para>Returns true if the MemoryContext <parameter>mctx</parameter> works with relative pointers instead of memory addresses.<funcsynopsis>
+					<funcprototype>
+						<funcdef>
+							<type>bool</type>
+							<function>vh_MemoryContextIsRelative</function>
+						</funcdef>
+						<paramdef>
+							<type>MemoryContext</type>
+							<parameter> mctx</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+			<para>Takes a relative pointer <parameter>relptr</parameter> for a given MemoryContext <parameter>mctx</parameter> and determines a memory address.<funcsynopsis>
+					<funcprototype>
+						<funcdef>
+							<type>void*</type>
+							<function>vh_pointer</function>
+						</funcdef>
+						<paramdef>
+							<type>MemoryContext</type>
+							<parameter>mctx</parameter>
+						</paramdef>
+						<paramdef>
+							<type>uintptr_t</type>
+							<parameter>relptr</parameter>
+						</paramdef>
+					</funcprototype>
+				</funcsynopsis>
+			</para>
+		</sect1>
+	</chapter>
+	<chapter xml:id="vh-types">
+		<title>Data Types</title>
+		<sect1 xml:id="vh-type-overview">
+			<title>Overview</title>
+			<abstract>
+				<para>
+					<productname>VH</productname> has the ability to support up to 8,191 data types.  Types may be nested up to seven levels deep.  This allows for an Array datatype to contain a Range type which contains a Date without a distinct type to represent this nesting.  The Type system has variety of access functions which each type is expected to implement.  The access functions allow <productname>VH</productname> to communicate with a variety of backends and serialize data in multiple formats.</para>
+				<para>Types may be added to <productname>VH</productname> by users.  The following types are implemented in the core library:</para>
+				<variablelist>
+					<title>Integers</title>
+					<varlistentry>
+						<term>bool</term>
+						<listitem>
+							<para>A 1 byte boolean flag.  Supports binray transport.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>int16_t</term>
+						<term>uint16_t</term>
+						<listitem>
+							<para>2 byte signed and unsigned integers.  Implemented with a standard C89 <type>int16_t</type>/<type>uint16_t</type> storage type.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>int32_t</term>
+						<term>uint32_t</term>
+						<listitem>
+							<para>4 byte signed and unsigned integers.  Implemented with a standard C89 <type>int32_t</type>/<type>uint32_t</type> storage type.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>int64_t</term>
+						<term>uint64_t</term>
+						<listitem>
+							<para>8 byte signed and unsigned integers.  Implemented with a standard C89 <type>int64_t</type>/<type>uint64_t</type> storage type.</para>
+							<para>Must be supported by the underlying architecture.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>float</term>
+						<listitem>
+							<para>4 byte float.  Implemented with a standard C89 <type>float</type> storage type.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>double</term>
+						<listitem>
+							<para>8 byte double.  Implemented with a standard C89 <type>double</type> storage type.</para>
+						</listitem>
+					</varlistentry>
+				</variablelist>
+				<variablelist>
+					<title>Calendars</title>
+					<varlistentry>
+						<term>Day</term>
+						<listitem>
+							<para>A calendar day, allows for operators to add and subtract days to a given Date or DateTime instance.  Implemented as a <type>int32_t</type>.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>Date</term>
+						<listitem>
+							<para>Gregorian calendar with the ability to add and subtract years, months, and days.  Implemented as a <type>int32_t</type>.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>DateTime</term>
+						<listitem>
+							<para>A Gregorian date time implementation with the ability to add and subtracct years, months, days, hours, minutes, seconds and milliseconds.  Implemented as a <type>int64_t</type> if available.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>Hour</term>
+						<listitem>
+							<para>A calendar hour, allows for operators to add and subtract hours to a given DateTime instance.  Implemented as a <type>int32_t</type>.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>Millisecond</term>
+						<listitem>
+							<para>A calendar millisecond, allows for operators to add and subtract milliseconds to a given DateTime instance.  Implemented as a <type>int32_t</type>.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>Minute</term>
+						<listitem>
+							<para>A calendar minute, allows for operators to add and subtract minutes to a given DateTime instance.  Implemented as a <type>int32_t</type>.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>Month</term>
+						<listitem>
+							<para>A calendar month, allows for operators to add and subtract months to a given Date or DateTime instance.  Implemented as a <type>int32_t</type>.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>Second</term>
+						<listitem>
+							<para>A calendar second, allows for operators to add and subtract seconds to a given DateTime instance.  Implemented as a <type>int32_t</type>.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>Year</term>
+						<listitem>
+							<para>A calendar year, allows for operators to add and substract years to a given Date or DateTime instance.  Implemented as a <type>int32_t</type>.</para>
+						</listitem>
+					</varlistentry>
+				</variablelist>
+				<variablelist>
+					<title>Strings</title>
+					<varlistentry>
+						<term>String</term>
+						<listitem>
+							<para>A custom string implementation which allows for 16 bytes to be stored before a memory allocation must occur.</para>
+						</listitem>
+					</varlistentry>
+				</variablelist>
+				<variablelist>
+					<title>Nesting Types</title>
+					<varlistentry>
+						<term>Array</term>
+						<listitem>
+							<para>Arrays allow for any time to be contained by them.</para>
+						</listitem>
+					</varlistentry>
+					<varlistentry>
+						<term>Range</term>
+						<listitem>
+							<para>A range has a start and end point.  Ranges may implement overlap, adjacent, contained by operators.</para>
+							<para>
+								<type>int16_t</type>, <type>int32_t</type>, <type>int64_t</type>, <type>float</type>, <type>double</type>, <type>numeric</type>, <type>Date</type>, <type>DateTime</type> may serve as the underlying type in a <type>Range</type>
+							</para>
+						</listitem>
+					</varlistentry>
+				</variablelist>
+			</abstract>
+			<sect2 xml:id="vh-type-var">
+				<title>Variables</title>
+				<abstract>
+					<para>Variables in VH are called TypeVar.  The TypeVar system allows for type deduction of variable types on the fly.  You must create a TypeVar by calling a single macro which will return a pointer to your requested data type.  Without TypeVar, VH must be explicitly told the type of a variable when forming queries and using comparison, arithmetic and assignment operators.</para>
+					<para>When TypeVar are used by developers, VH automatically detects the underlying types of variables when processing operators.</para>
+				</abstract>
+				<sect3 xml:id="vh-type-var-make">
+					<title>Creating Variables</title>
+					<abstract>
+						<para>TypeVars are allocated in the heap in the current transaction block using the <function>vh_makevar</function> family of functions:</para>
+					</abstract>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>void* <function>vh_makevar</function>
+						</funcdef>
+						<varargs/>
+					</funcprototype>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>void* <function>vh_makevar1</function>
+						</funcdef>
+						<paramdef>
+							<parameter>type1</parameter>
+						</paramdef>
+					</funcprototype>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>void* <function>vh_makevar2</function>
+						</funcdef>
+						<paramdef>
+							<parameter>type1</parameter>
+						</paramdef>
+						<paramdef>
+							<parameter>type2</parameter>
+						</paramdef>
+					</funcprototype>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>void* <function>vh_makevar3</function>
+						</funcdef>
+						<paramdef>
+							<parameter>type1</parameter>
+						</paramdef>
+						<paramdef>
+							<parameter>type2</parameter>
+						</paramdef>
+						<paramdef>
+							<parameter>type3</parameter>
+						</paramdef>
+					</funcprototype>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>void* <function>vh_makevar4</function>
+						</funcdef>
+						<paramdef>
+							<parameter>type1</parameter>
+						</paramdef>
+						<paramdef>
+							<parameter>type2</parameter>
+						</paramdef>
+						<paramdef>
+							<parameter>type3</parameter>
+						</paramdef>
+						<paramdef>
+							<parameter>type4</parameter>
+						</paramdef>
+					</funcprototype>
+					<funcprototype>
+						<?dbhtml funcsynopsis-style='ansi'?>
+						<funcdef>void* <function>vh_makevar5</function>
+						</funcdef>
+						<paramdef>
+							<parameter>type1</parameter>
+						</paramdef>
+						<paramdef>
+							<parameter>type2</parameter>
+						</paramdef>
+						<paramdef>
+							<parameter>type3</parameter>
+						</paramdef>
+						<paramdef>
+							<parameter>type4</parameter>
+						</paramdef>
+						<paramdef>
+							<parameter>type5</parameter>
+						</paramdef>
+					</funcprototype>
+					<funcsynopsis>
+						<funcprototype>
+							<?dbhtml funcsynopsis-style='ansi'?>
+							<funcdef>void* <function>vh_makevar6</function>
+							</funcdef>
+							<paramdef>
+								<parameter>type1</parameter>
+							</paramdef>
+							<paramdef>
+								<parameter>type2</parameter>
+							</paramdef>
+							<paramdef>
+								<parameter>type3</parameter>
+							</paramdef>
+							<paramdef>
+								<parameter>type4</parameter>
+							</paramdef>
+							<paramdef>
+								<parameter>type5</parameter>
+							</paramdef>
+							<paramdef>
+								<parameter>type6</parameter>
+							</paramdef>
+						</funcprototype>
+					</funcsynopsis>
+					<para>The <function>vh_makevar</function> family of functions requires the outter most type to be listed first and the inner most type be the rightmost type.  The return value may be assigned a pointer of the outter most (left most parameter) type.</para>
+					<para>When using the <function>vh_makevarN</function> functions, you do not have to quote your types.  However, each type must be quoted to form a <type>const char*</type> string when using <function>vh_makevar</function> directly.  When using the <function>vh_makevarN</function> functions, quoting each type name is done by a C macro.</para>
+					<para>Use of the <function>vh_makevarN</function> functions are encouraged.</para>
+				</sect3>
+				<sect3 xml:id="vh-type-var-destroy">
+					<title>Destroying Variables</title>
+					<abstract>
+						<para>You may allow the transaction block to destroy TypeVar and release the memory occupied by them.  However, if you have long running tranactions or need tighter control over available memory, TypeVar may be destroyed.  A single function destroys a TypeVar of any type:</para>
+					</abstract>
+					<funcprototype>
+						<funcdef>void <function>vh_destroyvar</function></funcdef>
+						<paramdef>void*<parameter>typevar</parameter>
+						</paramdef>
+					</funcprototype>
+					<abstract>
+						<para>Depending on the underlying type, a TypeVar may contain out of line storage with allocated memory.  By calling <function>vh_destroyvar</function> any memory allocated by the underlying type is freed as well.  When transactions are unrolled, any memory occupied by the underlying type will be freed.</para>
+						<para>Using <function>vh_destroyvar</function> is not required, but it does give a developer more granular control of memory usage.</para>
+					</abstract>
+				</sect3>
+				<sect3 xml:id="vh-type-var-example">
+					<title>Example</title>
+					<code language="C">
+						<type>int *</type>
+						<varname>first</varname> = <function>vh_makevar1(int)</function>; *first = 1;<function>vh_destroyvar(first)</function>;</code>
+					<abstract>
+						<para>We declare a variable first which is a pointer to an <type>int</type>.  We then call <function>vh_makevar1</function> to create a TypeVar for a <type>int</type>.  VH allocates a TypeVar of the appropriate size and alignment and returns it.  The user may then immediately assign a value to the pointer using regular assignment operators.  Finally we destroy the TypeVar by calling <function>vh_destroyvar</function>
+						</para>
+					</abstract>
+				</sect3>
+			</sect2>
+			<sect2 xml:id="vh-type-array">
+				<title>Arrays</title>
+				<abstract>
+					<para>Arrays allow users to create a series of sequential TypeVar of the same underlying type and access them by index.  Arrays minmize the amount of meta-space required to identify the underlying type.  Variables (TypeVar) require enough space for the data itself plus the type identifiers.</para>
+					<para>Arrays have nearly identical create and destroy semantics.  The traditional index, pop, push, functionality are available.  Arrays automaticaly resize</para>
+				</abstract>
+				
+				<sect3 xml:id="vh-type-array-make">
+					<title>Creating Arrays</title>
+					<abstract>
+					</abstract>
+					
+					<para>Creates a new array with <parameter>entries</parameter> of the type indicating by <varargs/>.
+						<funcprototype>
+							<?dbhtml funcsynopsis-style='ansi'?>
+							<funcdef>void* <function>vh_makearray</function>
+							</funcdef>
+							<paramdef>
+								<type>int32_t</type><parameter> entries</parameter>
+							</paramdef>
+							<paramdef>
+							<varargs/>
+							</paramdef>
+						</funcprototype>
+					</para>
+					
+					<para>Creates a new array with <parameter>entries</parameter> with one nested type of <parameter>type1</parameter>.
+						<funcprototype>
+							<?dbhtml funcsynopsis-style='ansi'?>
+							<funcdef>void* <function>vh_makearray1</function>
+							</funcdef>
+							<paramdef><type>int32_t</type> <parameter>entries</parameter></paramdef>
+							<paramdef>
+								<parameter>type1</parameter>
+							</paramdef>
+						</funcprototype>
+					</para>
+					
+					<para>Creates a new array with <parameter>entries</parameter> with two nested types with an outter most type of <parameter>type1</parameter> and the inner type of <parameter>type2</parameter>.
+						<funcprototype>
+							<?dbhtml funcsynopsis-style='ansi'?>
+							<funcdef>void* <function>vh_makearray2</function>
+							</funcdef>
+							<paramdef><type>int32_t</type> <parameter>entries</parameter></paramdef>
+							<paramdef><parameter>type1</parameter></paramdef>
+							<paramdef><parameter>type2</parameter></paramdef>
+						</funcprototype>
+					</para>
+					
+					<para>Creates a new array with <parameter>entries</parameter> with three nested types with an outter most type of <parameter>type1</parameter> and the inner most type of <parameter>type3</parameter>.
+						<funcprototype>
+							<?dbhtml funcsynopsis-style='ansi'?>
+							<funcdef>void* <function>vh_makearray3</function>
+							</funcdef>
+							<paramdef><type>int32_t</type> <parameter>entries</parameter></paramdef>
+							<paramdef><parameter>type1</parameter></paramdef>
+							<paramdef><parameter>type2</parameter></paramdef>
+							<paramdef><parameter>type3</parameter></paramdef>
+						</funcprototype>
+					</para>
+				</sect3>
+			
+				<sect3 xml:id="vh-type-array-destroy">
+					<title>Destroying Arrays</title>
+					<abstract>
+						<para>Arrays will be automatically destroyed when the transaction block they were created in is destroyed.</para>
+						<para>Arrays may also be destroyed at any time by calling the <function>vh_destroyarray</function> function.  The destroy function will release any memory allocated by the underlying types.</para>
+					</abstract>
+					
+					<funcprototype>
+						<funcdef>void <function>vh_destroyarray</function></funcdef>
+						<paramdef><type>void*</type> <parameter>typearray</parameter></paramdef>
+					</funcprototype>
+				</sect3>
+				
+				<sect3 xml:id="vh-type-array-access">
+					<title>Accessing Arrays</title>
+					<abstract>
+						<para>The pointer returned by the <function>vh_makearray</function> family of functions does not allow direct indexing into the array.  In order to access an array member via index, you must call <function>vh_array_idx</function> with the array pointer returned by <function>vh_makearray</function>.</para>
+					</abstract>
+					
+					<para>Return the TypeVar variable at Index <parameter>idx</parameter> off the Array <parameter>array</parameter>.
+						<funcprototype>
+							<?dbhtml funcsynopsis-style='ansi' ?>
+							<funcdef>void* <function>vh_array_idx</function></funcdef>
+							<paramdef><type>void*</type> <parameter>array</parameter></paramdef>
+							<paramdef><type>int32_t</type> <parameter>idx</parameter></paramdef>
+						</funcprototype>
+					</para>
+				</sect3>
+			</sect2>
+		
+		</sect1>
+		<sect1 xml:id="vh-type-operators">
+		
+			<title>Operators</title>
+			<abstract>
+				<para>The TypeVar system allows for us to have a consistent operator invocation.  If there's a learning curve to using <productname>VH</productname>, operators are it.  Operators use macros heavily, to simplify the calling convention.</para>
+			</abstract>
+			<sect2 xml:id="vh-type-operators-usage">
+				<title>Usage</title>
+				<sect3 xml:id="vh-type-operators-naming">
+					<title>Naming Conventions</title>
+				</sect3>
+				<sect3 xml:id="vh-type-operators-comparison">
+					<title>Comparisons</title>
+				</sect3>
+				<sect3 xml:id="vh-type-operators-arthmetic">
+					<title>Arithmetic</title>
+				</sect3>
+				<sect3 xml:id="vh-type-operators-assignment">
+					<title>Assignment</title>
+				</sect3>
+			</sect2>
+			<sect2 xml:id="vh-type-operators-extending">
+				<title>Extensions</title>
+				<abstract>
+					<para>Users may add additional operator support to VH.</para>
+				</abstract>
+			</sect2>
+		</sect1>
+		<sect1 xml:id="vh-type-json">
+			<title>JSON</title>
+				<abstract>
+					<para>Data structures may be serialized and deserialized from JSON.  The JSON infrastructure is tightly integrated within VH to leverage HeapTuple and TypeVar.</para>
+					<para>Internally, JSON values are stored in opaque data structures irrespective of the JSON token type: array, object, pair, value.  It is required the underlying type for the value being stored on a JSON Pair or Value be known when it is created.  VH utilizes the TypeVar infrastructure to store the actual user value.  This allows for the JSON tree to store any type supported by <productname>VH</productname>, not just the primative types supported by the JSON standard.  Doing this allows for simplier operator invocation when working with data outside of the JSON structure.</para>
+					<para>Additionally, JSON elements may only contain a reference to a HeapTuple.  References to HeapTuple are handled automatically when invoking the stringify family of functions.  However, when a JSON element references a HeapTuple, the value cannot be maintained thru the JSON interface.  Instead, the caller should manipulate the HeapTuple value directly.  After the HeapTuple has been updated, the JSON element will automatically reflect this new value.</para>
+				</abstract>
+				
+			<sect2>
+				<title>JSON Element Introspection</title>
+				<abstract>
+					<para>Element types correlate directly with JSON types: arrays, objects, pairs, and values.</para>
+					<para>Element values may represent a HeapTuplePtr, TypeVar, or a JSON Array/Oject.</para>
+				</abstract>
+
+				<sect3>
+					<title>Element Type</title>
+					<abstract>
+						<para>The JSON Element (Array, Pair, Object, Value) may be determined using four functions.</para>
+						<para>NOTE: A Pair contains both a string key name value and a user value that can be of any type supported by VH.</para>
+					</abstract>
+					
+					<para>Returns true if the JSON element <parameter>j</parameter> is an Array.
+						<funcprototype>
+							<funcdef>
+								<type>bool</type>
+								<function>vh_json_isa_array</function>
+							</funcdef>
+							<paramdef>
+								<type>Json</type>
+								<parameter>j</parameter>
+							</paramdef>
+						</funcprototype>
+					</para>
+					
+					<para>Returns true if the JSON element <parameter>j</parameter> is an Object.
+						<funcprototype>
+							<funcdef>
+								<type>bool</type>
+								<function>vh_json_isa_obj</function>
+							</funcdef>
+							<paramdef>
+								<type>Json</type>
+								<parameter>j</parameter>
+							</paramdef>
+						</funcprototype>
+					</para>
+					
+					<para>Returns true if the JSON element <parameter>j</parameter> is a Pair.
+						<funcprototype>
+							<funcdef>
+								<type>bool</type>
+								<function>vh_json_isa_pair</function>
+							</funcdef>
+							<paramdef>
+								<type>Json</type>
+								<parameter>j</parameter>
+							</paramdef>
+						</funcprototype>
+					</para>
+					
+					<para>Returns true if the JSON element <parameter>j</parameter> is a Value.
+						<funcprototype>
+							<funcdef>
+								<type>bool</type>
+								<function>vh_json_isa_value</function>
+							</funcdef>
+							<paramdef>
+								<type>Json</type>
+								<parameter>j</parameter>
+							</paramdef>
+						</funcprototype>
+					</para>
+				</sect3>
+				
+				<sect3>
+					<title>Element Value</title>
+					<abstract>
+						<para>The Pair and Value types store actual user values.  Obtaining a pointer to a Pair or Value does not equate to obtaining a pointer to the TypeVar or JSON element containing the value.</para>
+						<para>A JSON Pair or JSON Value may also store a <type>HeapTuplePtr</type>.  We call this a reference to a HeapTuplePtr.</para>
+						<para>Since there are three distinct storage methods, returning different data structures thru on opaque <type>void*</type> pointer, there are three functions for obtaining the actual value from a JSON Pair or Value.</para>
+						<para>The functions all follow the same prototype: the return value is a pointer to the HeapTuplePtr, JSON element, or TypeVar containing the value.  The second parameter is a <type>bool</type> pointer, to indicate if the JSON element stores the value type the function expected.  If the boolean is FALSE, the caller should ignore the value returned by the function.</para>
+					</abstract>
+					
+					<para>Returns a <type>HeapTuplePtr</type> and sets the <parameter>is_htpref</parameter> to true if the JSON element <parameter>jval</parameter> references a HeapTuplePtr as it's value.
+						<funcprototype>
+							<funcdef>
+								<type>HeapTuplePtr</type>
+								<function>vh_json_htp</function>
+							</funcdef>
+							<paramdef>
+								<type>Json</type>
+								<parameter>jval</parameter>
+							</paramdef>
+							<paramdef>
+								<type>bool</type>
+								<parameter>is_htpref</parameter>
+							</paramdef>
+						</funcprototype>
+					</para>
+					
+					
+					<para>Returns a <type>TypeVar</type> and sets the <parameter>is_objarr</parameter> to true if the JSON element <parameter>jval</parameter> stores a JSON Array or JSON Object as it's value.
+						<funcprototype>
+							<funcdef>
+								<type>Json</type>
+								<function>vh_json_objarr</function>
+							</funcdef>
+							<paramdef>
+								<type>Json</type>
+								<parameter>jval</parameter>
+							</paramdef>
+							<paramdef>
+								<type>bool</type>
+								<parameter>is_objarr</parameter>
+							</paramdef>
+						</funcprototype>
+					</para>
+					
+					<para>Returns a <type>TypeVar</type> and sets the <parameter>is_typevar</parameter> to true if the JSON element <parameter>jval</parameter> stores a TypeVar as it's value.
+						<funcprototype>
+							<funcdef>
+								<type>TypeVar</type>
+								<function>vh_json_typevar</function>
+							</funcdef>
+							<paramdef>
+								<type>Json</type>
+								<parameter>jval</parameter>
+							</paramdef>
+							<paramdef>
+								<type>bool</type>
+								<parameter>is_typevar</parameter>
+							</paramdef>
+						</funcprototype>
+					</para>
+				</sect3>
+				
+				<sect3>
+					<title>Arrays</title>
+						<abstract>
+							<para>JSON Arrays may store Arrays, Objects, or Values.  Per the JSON specification, they cannot store a pair.  JSON element types may be intermingled within an array.</para>
+							<para>Arrays are feature zero based indexing, thus the applicable index numbers are from zero up to, but not including, the value returned by <function>vh_json_array_count</function>.</para>
+						</abstract>
+						
+						<para>Returns the number of elements in the array <parameter>jval</parameter>.
+							<funcprototype>
+								<funcdef>
+									<type>int32_t</type>
+									<function>vh_json_arr_count</function>
+								</funcdef>
+								<paramdef>
+									<type>Json</type>
+									<parameter>jval</parameter>
+								</paramdef>
+							</funcprototype>
+						</para>
+						
+						<para>Returns the <type>Json</type> element at index <parameter>idx</parameter> for the JSON Array <parameter>jarray</parameter>.
+							<funcprototype>
+								<funcdef>
+									<type>Json</type>
+									<function>vh_json_arr_atidx</function>
+								</funcdef>
+								<paramdef>
+									<type>Json</type>
+									<parameter>jarray</parameter>
+								</paramdef>
+								<paramdef>
+									<type>int32_t</type>
+									<parameter>idx</parameter>
+								</paramdef>
+							</funcprototype>
+						</para>
+						
+						<para>Pushes the <parameter>jval</parameter> into the JSON Array <parameter>jarray</parameter>.  Returns TRUE if successful, FALSE if an error occured.  The JSON element <parameter>jval</parameter> must be an Array, Object, or Value type.
+							<funcprototype>
+								<funcdef>
+									<type>bool</type>
+									<function>vh_json_arr_push</function>
+								</funcdef>
+								<paramdef>
+									<type>Json</type>
+									<parameter>jarray</parameter>
+								</paramdef>
+								<paramdef>
+									<type>Json</type>
+									<parameter>jval</parameter>
+								</paramdef>
+							</funcprototype>
+						</para>
+				</sect3>
+				
+				<sect3>
+					<title>Objects</title>
+					<abstract>
+						<para>JSON Objects store Pairs.  The Pairs are indexed by key name, but are not required to have unique key names within a JSON Object.  Thus a single key name can be stored multiple times within a JSON Object.</para>
+						<para>Objects stored keys in binary sort order and use a binary search method for searching for keys.</para>
+						<para>JSON Pairs are stored at zero based indexes in the JSON Object.  Thus, valid index ranges are from zero up to, but not including, the value returned by <function>vh_json_obj_key_count</function>.</para>
+					</abstract>
+					
+					<para>Returns the number of keys in the object <parameter>jval</parameter>.  Duplicate key names are included in the count.
+						<funcprototype>
+							<funcdef>
+								<type>int32_t</type>
+								<function>vh_json_obj_key_count</function>
+							</funcdef>
+							<paramdef>
+								<type>Json</type>
+								<parameter>jval</parameter>
+							</paramdef>
+						</funcprototype>
+					</para>
+					
+					<para>Returns the <type>Json</type> element at index <parameter>idx</parameter> for the JSON Object <parameter>jobj</parameter>.
+						<funcprototype>
+							<funcdef>
+								<type>Json</type>
+								<function>vh_json_obj_key_atidx</function>
+							</funcdef>
+							<paramdef>
+								<type>Json</type>
+								<parameter>jobj</parameter>
+							</paramdef>
+							<paramdef>
+								<type>int32_t</type>
+								<parameter>idx</parameter>
+							</paramdef>
+						</funcprototype>
+					</para>
+					
+					<para>Returns an array of <type>Json</type> elements at matching the key name <parameter>key_name</parameter> for the JSON Object <parameter>jobj</parameter>.  The <parameter>count</parameter> will be set with the size of the array.  If no elements are found matching the <parameter>key_name</parameter>, a null value will be returned and the <parameter>count</parameter> parameter will be set to zero.  The caller is responsible for freeing the array of pointers returned.
+						<funcprototype>
+							<funcdef>
+								<type>Json*</type>
+								<function>vh_json_obj_key_byname</function>
+							</funcdef>
+							<paramdef>
+								<type>Json</type>
+								<parameter>jobj</parameter>
+							</paramdef>
+							<paramdef>
+								<type>const char*</type>
+								<parameter>key_name</parameter>
+							</paramdef>
+							<paramdef>
+								<type>int32_t*</type>
+								<parameter>count</parameter>
+							</paramdef>
+						</funcprototype>
+					</para>
+					
+					<para>Pushes the <parameter>jval</parameter> into the JSON Array <parameter>jarray</parameter>.  Returns TRUE if successful, FALSE if an error occured.  The JSON element <parameter>jval</parameter> must be a Pair type.  The Pair is not guaranteed to be at the last index, since Objects store Pairs in key name order.
+						<funcprototype>
+							<funcdef>
+								<type>bool</type>
+								<function>vh_json_obj_push</function>
+							</funcdef>
+							<paramdef>
+								<type>Json</type>
+								<parameter>jarray</parameter>
+							</paramdef>
+							<paramdef>
+								<type>Json</type>
+								<parameter>jval</parameter>
+							</paramdef>
+						</funcprototype>
+					</para>
+				</sect3>
+				
+				<sect3>
+					<title>Pairs</title>
+						<abstract>
+							<para>Pairs are the most complex JSON element type.  Pairs may not reference a HeapTuplePtr at all.  That is the key name and value are stored directly on the JSON Pair element.  The second Pair type fully references a HeapTuplePtr: the key name and value correspond to a particular HeapField on a HeapTuplePtr.  The third type has a key name that references a TableField name, but not a value on a HeapTuplePtr.  The final type stores the key name on the JSON Pair and the value references a HeapTuplePtr value.</para>
+						</abstract>
+				</sect3>
+				
+				<sect3>
+					<title>Values</title>
+						<abstract>
+							<para></para>
+						</abstract>
+				</sect3>
+				
+			</sect2>
+			<sect2>
+				<title>Creating In Memory</title>
+					<abstract>
+						<para>A JSON document may be created in memory.  Due to the various storage methods, this can be a tedious process.  Several macros exist to accelarate JSON element creation, primarily to solve the type stack lookup required to form most JSON elements.</para>
+					</abstract>
+				
+			</sect2>
+			
+			<sect2>
+				<title>Parsing a String</title>
+				<abstract>
+					<para></para>
+				</abstract>
+			</sect2>
+			
+			<sect2>
+				<title>Generating a String</title>
+				<abstract>
+					<para></para>
+				</abstract>
+			</sect2>
+			
+			<sect2>
+				<title>Cleanup</title>
+				<abstract>
+					<para>There are three primary routines to clean up a JSON document represented in memory.  The naming convention follows the standard <productname>VH</productname> destroy, finalize, and free used elsewhere in the library.</para>
+					<para>The routines work regardless of origin of the JSON document: from the parser or in memory allocations.</para>
+					<para>The cleanup routines are recursive, they will traverse the document's descendants until the requested action has been completed on all children.</para>
+				</abstract>
+				
+				<para>Finalizes the underlying TypeVar, JSON Arrays and Objects, stored by the JSON element <parameter>jval</parameter> recursively but does not free the memory allocated by the JSON elements themselves.
+					<funcprototype>
+						<funcdef>
+							<type>void</type>
+							<function>vh_json_finalize</function>
+						</funcdef>
+						<paramdef>
+							<type>Json</type>
+							<parameter>jval</parameter>
+						</paramdef>
+					</funcprototype>
+				</para>
+				
+				<para>Frees the memory occupied by the JSON element <parameter>jval</parameter> recursively but does not finalize the TypeVar, JSON Array and Object stored by the <parameter>jval</parameter> and its descendants.
+					<funcprototype>
+						<funcdef>
+							<type>void</type>
+							<function>vh_json_free</function>
+						</funcdef>
+						<paramdef>
+							<type>Json</type>
+							<parameter>jval</parameter>
+						</paramdef>
+					</funcprototype>
+				</para>
+				
+				<para>Frees the memory occupied by the JSON element <parameter>jval</parameter> recursively and finalizes the TypeVar, JSON Array and Object stored by the <parameter>jval</parameter> and its descendants.
+					<funcprototype>
+						<funcdef>
+							<type>void</type>
+							<function>vh_json_destroy</function>
+						</funcdef>
+						<paramdef>
+							<type>Json</type>
+							<parameter>jval</parameter>
+						</paramdef>
+					</funcprototype>
+				</para>
+			</sect2>
+		</sect1>
+	</chapter>
+	<chapter xml:id="vh-record-mutator">
+		<title>Record Mutators</title>
+		<abstract>
+			<para>Record Mutators allow <productname>VH</productname> to manipulate values on records returned by a query you provide.</para>
+			<para>Think of mutator as a map: it tells <productname>VH</productname> what datatypes exist where within an arbitrary chunk of memory.  It also helps the retrieve and flush data with a variety of backends.</para>
+		</abstract>
+		<sect1>
+			<title>Defining</title>
+			<abstract>
+				<para>
+					<productname>VH</productname> does not require you to define Record Mutators at compile time.  This allows for a Schemaless implementation.  Schemas, tables, and fields may be accessed by name only.  <productname>VH</productname> has highly optimized techniques that minimize name resolution.</para>
+			</abstract>
+			<sect2>
+				<title>Thru the API</title>
+				<abstract>
+					<para>Record Mutators may be generated thru an API visible in C code.  This manner is not recommended due to the complexity.  Should you make an error with the definition routines, it's possible for your program to produce undefined results and may even cause a segmentation fault.  These routines are called by the schema load options described in the next section.</para>
+				</abstract>
+			</sect2>
+			<sect2>
+				<title>Retrieving from a Schema</title>
+				<sect3>
+					<title>Database</title>
+					<abstract>
+						<para>
+							<productname>VH</productname> prefers to extract schema information from the ANSI SQL INFORMATION_SCHEMA views.  When a backend product does not support these views, but nonetheless has schema information available, <productname>VH</productname> implements those methods.
+						</para>
+					</abstract>
+					
+					<para>Loads a <parameter>schema</parameter> to the TableCatalog <parameter>target_catalog</parameter> from the BackEndConnection <parameter>bec</parameter>.
+						<funcsynopsis>
+							<funcprototype>
+								<?dbhtml funcsynopsis-style='ansi'?>
+								<funcdef>
+									<type>BackEnd</type>
+									<function>vh_sqlis_loadschema</function>
+								</funcdef>
+								<paramdef>
+									<type>const char*</type>
+									<parameter> schema_name</parameter>
+								</paramdef>
+								<paramdef>
+									<type>TableCatalog</type>
+									<parameter> target_catalog</parameter>
+								</paramdef>
+								<paramdef>
+									<type>BackEndConnection</type>
+									<parameter> bec</parameter>
+								</paramdef>
+							</funcprototype>
+						</funcsynopsis>
+					</para>
+					
+					<para>Loads a set of schemas <parameter>schemas</parameter> to the <type>TableCatalog</type> <parameter>target_catalog</parameter> from the <type>BackEndConnection</type> <parameter>bec</parameter>.
+					
+						<funcsynopsis>
+							<funcprototype>
+								<?dbhtml funcsynopsis-style='ansi'?>
+								<funcdef>
+									<type>BackEnd</type>
+									<function>vh_sqlis_loadschema</function>
+								</funcdef>
+								<paramdef>
+									<type>SList</type>
+									<parameter> schemas</parameter>
+								</paramdef>
+								<paramdef>
+									<type>TableCatalog</type>
+									<parameter> target_catalog</parameter>
+								</paramdef>
+								<paramdef>
+									<type>BackEndConnection</type>
+									<parameter> bec</parameter>
+								</paramdef>
+							</funcprototype>
+						</funcsynopsis>
+					
+					</para>
+				</sect3>
+				<sect3>
+					<title>JSON</title>
+					<abstract>
+						<para><productname>VH</productname> has the ability to import and export schemas to a JSON file.  The JSON file provide more context to Record Mutators than the regular information schema is capable of.  <productname>VH</productname>'s JSON schema format identifies <productname>VH</productname> specfic features and enables them on the Record Mutator.</para>
+						<para>Key Generators are not an item available in a ANSI SQL Information Schema, but are available to <productname>VH</productname>.  Loading from JSON allows <productname>VH</productname> to automatically resolve these when <function>vh_start</function> is invoked.</para>
+					</abstract>
+				</sect3>
+			</sect2>
+		</sect1>
+		<sect1>
+			<title>Manipulating Record Values</title>
+			<abstract>
+				<para>Records may be manipulated using the operator system.  <productname>VH</productname> allows for fields to be updated by name.  You may define Record Mutators thru the API at compile time or thru two schema capture methods at runtime.  When queries are executed, they may attach the results to an existing Record Mutator or generate a new Record Mutator on the fly based on the results being returned.</para>
+				<para>Record Mutators provide powerful abstractions in the C language to minimize the need for users to be concerned about the underlying data type.  If you know the field name on the record you wish to change, <productname>VH</productname> will handle the rest.</para>
+			</abstract>
+		</sect1>
+		<sect1>
+			<title>Record Scope</title>
+			<abstract>
+				<para>
+Records are typically scoped to the transaction that produced them. 
+<productname>VH</productname> provides relative pointers to records 
+rather than absolute memory locations of each record. This allows the 
+system to move records from its buffers to disk backed storage when 
+memory conditions become tight. The software reserves the right to move 
+a particular record at any point in time, for any reason. Users should 
+use caution to always access records via their relative pointer, rather 
+than an absolute pointer. 
+				</para>
+				<para>
+When transaction blocks are destroyed, any record loaded by that 
+transaction will be removed and deallocated from memory. 
+				</para>
+				<para>
+You have the option to generate records for a given table outside of the 
+Transaction scope. However, these records must be freed by you or they 
+will continue to persist in memory. 
+				</para>
+			</abstract>
+		</sect1>
+	</chapter>
+	<chapter xml:id="vh-query-engine">
+		<title>Queries</title>
+		<abstract>
+			<para>
+				<productname>VH</productname> prefers users pass SQL statements directly to it's Query Engine.  The statement will be parsed and if requested, Relation Mutators will be attached when found in the catalogs.</para>
+		</abstract>
+		<sect1>
+			<title>Binding Parameters</title>
+			<abstract>
+				<para/>
+			</abstract>
+		</sect1>
+		<sect1>
+			<title>Retrieving Results</title>
+		</sect1>
+	</chapter>
+	<chapter xml:id="vh-xact">
+		<title>Transactions</title>
+		<abstract>
+			<para>
+				<productname>VH</productname> implements the unit of work when syncronizing records with the database in transaction blocks.  Transactions may be configured in one of two ways: immediate and delayed.</para>
+		</abstract>
+	</chapter>
+</book>

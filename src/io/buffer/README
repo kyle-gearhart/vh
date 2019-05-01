@@ -1,0 +1,47 @@
+
+src/vh/buffer/README
+
+Buffers allow us to store lots of data in memory and evict entire pages of
+HeapTuple to disk.  The goal with eviction is not to loose the data permantly
+but store it in a manner that can be accessed quickly.  This requires a good bit
+of cooperation from the Type subsystem for this work correctly.
+
+We store the data in a B+Tree format off disk.  There are four layers of keys:
+	1)	Buffer page number (4 byte)
+	2)	Page index number (2 byte)
+	3)	Out of line field offset number (2 bytes)
+	4)	Out of line extension (2 bytes)
+
+The HeapTuple itself will always be stored at:
+	1)	Buffer page number
+	2)	Page index number
+	3)	0
+	4) 	0
+
+If a particular field on a given HeapTuple instance requires out of line
+storage, then it's offset in the corresponding field numbers slot in Key Level
+3.  The first out of line extension leaf page at Key Level 4 has the following
+header format:
+	struct
+	{
+		uint32_t wordlen;
+		uint16_t extensions;
+	}
+
+Each extension only contains the raw data, the page itself tracks how much data
+is stored in a particular item on a page.
+
+The Binary TAM is responsible for writing the data out to the out of line
+storage when we serialize to disk.  It's also responsible for forming a
+HeapTuple off the disk.  The Type should only use the out of line storage when
+it absolutely has to.  Take String for example, by default it can store up to 15
+bytes of string data prior to needing out of line storage.  If all storage is in
+line, the BIN TAM should be smart enough to recognize that.
+
+All data that is stored on the HeapTuple directly will be memcpy'd over to the
+disk page.
+
+We store a freespace map in 0, 0, 0 to help the B+Tree manage it's empty pages
+and allocate more from the list rather than attempting to extend the file
+backing it.
+
